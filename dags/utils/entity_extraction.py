@@ -1,9 +1,7 @@
 import os
 import json
 import logging
-import re
-import google.generativeai as genai
-from dags.utils.gemini_util import create_genai_model
+from dags.utils.gemini_util import call_gemini_function
 
 from dags.config.settings import (
     RESULTS_FOLDER
@@ -17,10 +15,57 @@ from dags.utils.transaction_folder import (
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Define the entity extraction function schema
+ENTITY_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "transaction_id": {"type": "string"},
+        "organizations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string", "enum": ["sender", "recipient", "intermediary"]},
+                    "jurisdiction": {"type": "string"},
+                    "entity_type": {"type": "string", "enum": ["corporation", "shell_company", "non_profit", "government_agency", "financial_institution"]}
+                },
+                "required": ["name"]
+            }
+        },
+        "people": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string", "enum": ["director", "approver", "beneficiary", "other"]},
+                    "country": {"type": "string"}
+                },
+                "required": ["name"]
+            }
+        },
+        "transaction": {
+            "type": "object",
+            "properties": {
+                "amount": {"type": "string"},
+                "currency": {"type": "string"},
+                "purpose": {"type": "string"},
+                "date": {"type": "string"}
+            }
+        },
+        "jurisdictions": {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+    },
+    "required": ["transaction_id", "organizations", "people"]
+}
+
 
 def extract_entities_from_text(transaction_text, transaction_id, **context):
     """
-    Use Gemini to extract entities from transaction text.
+    Use Gemini with function calling to extract entities from transaction text.
     
     Args:
         transaction_text: The raw text of the transaction
@@ -31,8 +76,6 @@ def extract_entities_from_text(transaction_text, transaction_id, **context):
         Dictionary of extracted entities
     """
     try:
-        model = create_genai_model()
-
         logger.info(f"Extracting entities for transaction: {transaction_id}")
         
         if not transaction_text:
@@ -56,58 +99,16 @@ def extract_entities_from_text(transaction_text, transaction_id, **context):
         2. People mentioned (directors, approvers, beneficiaries)
         3. Transaction details (amount, currency, purpose)
         4. Jurisdictions mentioned (countries, territories)
-        
-        Format your response as a JSON object with the following structure and don't include any other text or comments:
-        {{
-          "transaction_id": "string",
-          "organizations": [
-            {{
-              "name": "string",
-              "role": "sender|recipient|intermediary",
-              "jurisdiction": "string",
-              "entity_type": "corporation|shell_company|non_profit|government_agency|financial_institution"
-            }}
-          ],
-          "people": [
-            {{
-              "name": "string",
-              "role": "director|approver|beneficiary|other",
-              "country": "string"
-            }}
-          ],
-          "transaction": {{
-            "amount": "string",
-            "currency": "string",
-            "purpose": "string",
-            "date": "string"
-          }},
-          "jurisdictions": [
-            "string"
-          ]
-        }}
+
+        Provide a structured response with all the entities you identified from the transaction data.
         """
 
-        # Generate a response from Gemini
-        response = model.generate_content(prompt)
-        result_text = response.text
-        
-        print(f"Gemini response: {result_text}")
-
-        # Extract JSON from the response
-        json_match = re.search(r'```json\s*(.*?)\s*```', result_text, re.DOTALL)
-        if json_match:
-            extracted_json = json_match.group(1)
-        else:
-            # Try to extract JSON directly
-            json_start = result_text.find('{')
-            json_end = result_text.rfind('}') + 1
-            if json_start != -1 and json_end != -1:
-                extracted_json = result_text[json_start:json_end]
-            else:
-                raise ValueError("Could not extract JSON from Gemini response")
-
-        # Parse the JSON
-        entities = json.loads(extracted_json)
+        # Call Gemini with function calling
+        entities = call_gemini_function(
+            function_name="extract_entities",
+            function_schema=ENTITY_EXTRACTION_SCHEMA,
+            prompt=prompt
+        )
         
         # Ensure transaction_id is set correctly
         entities["transaction_id"] = transaction_id

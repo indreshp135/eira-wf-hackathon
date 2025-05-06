@@ -1,9 +1,8 @@
 import os
 import json
 import logging
-import re
 from datetime import datetime
-from dags.utils.gemini_util import create_genai_model
+from dags.utils.gemini_util import call_gemini_function
 
 from config.settings import (
     RESULTS_FOLDER
@@ -17,9 +16,46 @@ from dags.utils.transaction_folder import (
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Define the risk assessment function schema
+RISK_ASSESSMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "transaction_id": {"type": "string"},
+        "extracted_entities": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "entity_types": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "risk_score": {
+            "type": "number",
+            "description": "Risk score between 0 and 1 (0 = low risk, 1 = high risk)"
+        },
+        "supporting_evidence": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "confidence_score": {
+            "type": "number",
+            "description": "Confidence score between 0 and 1"
+        },
+        "reason": {
+            "type": "string",
+            "description": "Detailed explanation of the risk assessment"
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time"
+        }
+    },
+    "required": ["extracted_entities", "entity_types", "risk_score", "supporting_evidence", "confidence_score", "reason"]
+}
+
 def generate_risk_assessment(transaction_data=None, transaction_id=None, transaction_filepath=None, all_results=None, **context):
     """
-    Generate a final risk assessment based on all collected data.
+    Generate a final risk assessment based on all collected data using Gemini function calling.
     
     Args:
         transaction_data: Text of the transaction (preferred)
@@ -28,8 +64,6 @@ def generate_risk_assessment(transaction_data=None, transaction_id=None, transac
         context: Airflow task context
     """
     try:
-        model = create_genai_model()
-
         # Handle the transaction text - either directly provided or read from file
         if transaction_data:
             # New mode - use the provided text directly
@@ -59,7 +93,6 @@ def generate_risk_assessment(transaction_data=None, transaction_id=None, transac
             # If still not found, try to load from the transaction folder
             if not entities:
                 entities = load_transaction_data(RESULTS_FOLDER, transaction_id, "entities.json")
-                
                 
         # Format the assessment_data structure
         assessment_data = {
@@ -153,45 +186,14 @@ def generate_risk_assessment(transaction_data=None, transaction_id=None, transac
         6. Calculate an overall risk score between 0 and 1 (0 = low risk, 1 = high risk)
         
         For any data that couldn't be fetched successfully, acknowledge that but still make your best assessment with the available information.
-        
-        Provide your assessment in the following JSON format:
-        {{
-          "extracted_entities": ["string"],
-          "entity_types": ["string"],
-          "risk_score": float,
-          "supporting_evidence": ["string"],
-          "confidence_score": float,
-          "reason": "string"
-        }}
-        
-        The "extracted_entities" should include all organizations and people from the data. 
-        The "entity_types" should reflect the type of each entity.
-        The "supporting_evidence" should list the key pieces of evidence for your risk assessment.
-        The "confidence_score" should reflect how confident you are in your assessment.
-        The "reason" should provide a detailed explanation of the risk assessment.
         """
         
-        # Generate a response from Gemini
-        response = model.generate_content(prompt)
-        result_text = response.text
-        
-        print(f"Gemini response: {result_text}")
-        
-        # Extract JSON from the response
-        json_match = re.search(r'```json\s*(.*?)\s*```', result_text, re.DOTALL)
-        if json_match:
-            extracted_json = json_match.group(1)
-        else:
-            # Try to extract JSON directly
-            json_start = result_text.find('{')
-            json_end = result_text.rfind('}') + 1
-            if json_start != -1 and json_end != -1:
-                extracted_json = result_text[json_start:json_end]
-            else:
-                raise ValueError("Could not extract JSON from Gemini response")
-        
-        # Parse the JSON
-        risk_assessment = json.loads(extracted_json)
+        # Call Gemini with function calling
+        risk_assessment = call_gemini_function(
+            function_name="generate_risk_assessment", 
+            function_schema=RISK_ASSESSMENT_SCHEMA, 
+            prompt=prompt
+        )
         
         # Ensure we have the transaction ID and timestamp
         if "transaction_id" not in risk_assessment or not risk_assessment["transaction_id"]:
