@@ -1,0 +1,104 @@
+%%{
+  init: {
+    'theme': 'dark',
+    'themeVariables': {
+      'primaryColor': '#2C3E50',
+      'primaryTextColor': '#ECF0F1',
+      'secondaryColor': '#34495E',
+      'tertiaryColor': '#2980B9',
+      'lineColor': '#3498DB',
+      'fontFamily': 'Inter, Arial, sans-serif',
+      'fontSize': '12px'
+    },
+    'flowchart': {
+      'curve': 'basis'
+    }
+  }
+}%%
+
+flowchart TB
+    %% User Interface
+    subgraph "💻 User Interface Layer"
+        direction TB
+        UI[User Dashboard]
+        SubmitTx[Transaction Submission]
+        Results[Results Visualization]
+    end
+
+    %% API Gateway
+    subgraph "🔐 API Gateway"
+        direction TB
+        APICore[FastAPI Endpoint]
+        AuthMW[Authentication Middleware]
+        RequestV[Request Validation]
+    end
+
+    %% Workflow Orchestration
+    subgraph "🔄 Workflow Orchestration"
+        direction TB
+        AirflowDAG[AML Risk Assessment DAG]
+        EntityExt[Entity Extraction]
+        EntityEnrich[Entity Enrichment]
+        RiskScore[Risk Scoring]
+    end
+
+    %% Data Enrichment
+    subgraph "🌐 Data Enrichment Services"
+        direction TB
+        OpenCorp[OpenCorporates API]
+        SanctionCheck[OpenSanctions]
+        WikiData[Wikidata]
+        NewsAPI[GDELT News]
+    end
+
+    %% AI Processing
+    subgraph "🤖 AI Intelligence Layer"
+        direction TB
+        GeminiAI[Google Gemini Pro]
+        LLMAnalysis[Advanced NLP Processing]
+        RiskModel[Risk Assessment Model]
+    end
+
+    %% Data Storage
+    subgraph "💾 Data Storage"
+        direction TB
+        ResultsDB[(Results Database)]
+        MetadataDB[(Metadata PostgreSQL)]
+        CacheLayer[(Redis Cache)]
+    end
+
+    %% Connections
+    UI -->|Transaction Submission| APICore
+    APICore -->|Trigger Workflow| AirflowDAG
+    
+    AirflowDAG --> EntityExt
+    EntityExt --> EntityEnrich
+    
+    EntityEnrich --> OpenCorp
+    EntityEnrich --> SanctionCheck
+    EntityEnrich --> WikiData
+    EntityEnrich --> NewsAPI
+    
+    EntityEnrich --> GeminiAI
+    GeminiAI --> LLMAnalysis
+    LLMAnalysis --> RiskScore
+    
+    RiskScore --> ResultsDB
+    AirflowDAG --> MetadataDB
+    AirflowDAG --> CacheLayer
+    
+    APICore -->|Retrieve Results| ResultsDB
+    UI -->|Fetch Results| APICore
+
+    %% Styling
+    classDef primaryLayer fill:#2C3E50,color:#ECF0F1,stroke:#3498DB,stroke-width:2px;
+    classDef secondaryLayer fill:#34495E,color:#ECF0F1,stroke:#2980B9,stroke-width:2px;
+    classDef tertiaryLayer fill:#3498DB,color:#FFFFFF,stroke:#2C3E50,stroke-width:2px;
+    classDef storageLayer fill:#2980B9,color:#FFFFFF,stroke:#ECF0F1,stroke-width:2px;
+
+    class UI,SubmitTx,Results primaryLayer;
+    class APICore,AuthMW,RequestV secondaryLayer;
+    class AirflowDAG,EntityExt,EntityEnrich,RiskScore secondaryLayer;
+    class OpenCorp,SanctionCheck,WikiData,NewsAPI tertiaryLayer;
+    class GeminiAI,LLMAnalysis,RiskModel tertiaryLayer;
+    class ResultsDB,MetadataDB,CacheLayer storageLayer;

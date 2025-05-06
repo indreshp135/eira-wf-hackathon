@@ -1,0 +1,16 @@
+lib
+logs
+app/lib
+__pycache__
+data
+venv
+pep_data.csv
+yarn.lock
+.env
+*.env
+.env.*
+!.env.example
+reports
+results
+test_output/
+node_modules/
